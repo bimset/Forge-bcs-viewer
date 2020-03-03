@@ -10030,7 +10030,8 @@ MyAuthToken.prototype.get = function()
 	    { label : "Cantidad - Material",         fieldName: "Material",          fieldType : "Properties"},
 	    { label : "Cantidad - Type Mark",             fieldName: "Type Mark",              fieldType : "Properties"},
 	    { label : "Cantidad - Volumen",           fieldName: "Volume",            fieldType : "Quantity"},
-	    { label : "Cantidad - Area",             fieldName: "Area",              fieldType : "Quantity"}
+	    { label : "Cantidad - Area",             fieldName: "Area",              fieldType : "Quantity"},
+	    { label : "Cantidad - Length",             fieldName: "Length",              fieldType : "Quantity"}
 	];
 
 	    // populate the popup menu with the avaialable models to load (from the array above)
@@ -10084,7 +10085,7 @@ MyAuthToken.prototype.get = function()
 	            reportData.groupQtyDataByRange(Qty, bound, initrange, wrapDataForPieChart);
 	        });
 	    }
-	    else {
+	    else { //property
 	        reportData.groupDataByProperty(reportObj.fieldName, wrapDataForPieChart);
 	     }
 	}
@@ -10199,13 +10200,13 @@ MyAuthToken.prototype.get = function()
 	    $("#barChart").empty();
 
 	    if (pieOpts.data.content.length === 0) {
-	        $("#pieChart").append("<p><em>No data could be retrieved for charts.  This report is probably not applicable for the given model.  As an example, Revit models can be sorted by Type or Level, but Fusion models cannot.  Fusion models are more appropriate for reports sorted by Mass, Volume, or Material.  Try switching to a different report or a different model.</em></p>");
+	        $("#pieChart").append("<p><em>El modelo no cuenta con datos.</em></p>");
 	    }
 	    else {
 	        // if we have a lot of buckets, don't let the pie chart get out of control, condense anything with 2 or less
 	        // into an "Other" wedge.
 
-	        //pieOpts.data.sortOrder = "value-desc";
+	        //pieOpts.data.sortOrder = "value-desc"; solo hace el sort
 	        pieOpts.data.content.sort(function (a, b) {
 	            if (a.value < b.value) return 1;
 	            else if (a.value > b.value) return -1;
@@ -10317,7 +10318,7 @@ MyAuthToken.prototype.get = function()
 
 	let _selectedWedge;
 
-	function clickPieWedge(evt) {
+	function clickPieWedge(evt) { //select a una grafica pie
 
 	    if (_selectedWedge !== evt.data.label) {
 	        ids = [];
@@ -10477,7 +10478,6 @@ MyAuthToken.prototype.get = function()
 	    var qtyArr = [];
 	    var bound = {"min":-0.1, "max":-0.1};
 	    var misCount = [];
-			var sumQty = 0;
 
 	    // console.time("getQtyByProperty");
 	    $.each(_modelLeafNodes, function(index, dbId) {
@@ -10491,8 +10491,6 @@ MyAuthToken.prototype.get = function()
 	                    if (propValue > bound.max || bound.max < 0)
 	                        bound.max = propValue;
 	                    var formatVal = Autodesk.Viewing.Private.formatValueWithUnits(propObj.properties[i].displayValue, propObj.properties[i].units, propObj.properties[i].type);
-	                    qtyArr.push({"dbId":dbId, "val":propValue, "label":formatVal, "units":propObj.properties[i].units});
-											sumQty = sumQty + propValue;
 	                    break;
 	                } else if (i == propObj.properties.length - 1) {
 	                    misCount.push(dbId);
@@ -10539,6 +10537,46 @@ MyAuthToken.prototype.get = function()
 	        callback(buckets);
 	}
 
+
+
+	// first get all the quantity data and their dbIds by propertyName, and put them in an array
+	// in the meantime, find the min and max value to prepare for range grouping in next step
+function getSumOfPropertyByFamilyType(propertyName, callback) {
+	var qtyArr = [];
+	var bound = {"min":-0.1, "max":-0.1};
+	var misCount = [];
+	var sumQty = 0;
+
+	// console.time("getQtyByProperty");
+	$.each(_modelLeafNodes, function(index, dbId) {
+			window._viewerMain.getProperties(dbId, function(propObj) {
+
+					for(var i = 0; i < propObj.properties.length; i++) {
+							if (propObj.properties[i].displayName === propertyName) { //propertyName variable de nombre de propiedad definida por el option del reporte.
+									var propValue = parseFloat(propObj.properties[i].displayValue);
+									if (propValue < bound.min || bound.min < 0)
+											bound.min = propValue;
+									if (propValue > bound.max || bound.max < 0)
+											bound.max = propValue;
+									var formatVal = Autodesk.Viewing.Private.formatValueWithUnits(propObj.properties[i].displayValue, propObj.properties[i].units, propObj.properties[i].type);
+									qtyArr.push({"dbId":dbId, "val":propValue, "label":formatVal, "units":propObj.properties[i].units});
+									sumQty = sumQty + propValue;
+									break;
+							} else if (i == propObj.properties.length - 1) {
+									misCount.push(dbId);
+							}
+					}
+
+					if ( index === _modelLeafNodes.length - 1) {
+							// console.timeEnd("getQtyByProperty");
+							if (callback) {
+									callback(qtyArr, misCount, bound);
+							}
+					}
+			});
+	});
+	}
+
 	module.exports = {
 	  startReportDataLoader,
 	  groupDataByType,
@@ -10564,7 +10602,7 @@ MyAuthToken.prototype.get = function()
 	            .y(function(d) { return d.value; })
 	            .showValues(true)
 	            .showControls(false)
-	            .tooltips(false)
+	            .tooltips(true)
 	            .valueFormat(d3.format('f'))
 	            .margin({ top: 0, right: 50, bottom: 0, left: 150})
 	            .transitionDuration(400);
