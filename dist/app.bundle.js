@@ -10023,6 +10023,7 @@ MyAuthToken.prototype.get = function()
 
 	let _reportOptions = [
 	    { label : "Cantidad - Tipo",             fieldName: "",                  fieldType : "ModelType"},
+			{ label : "Suma por categoría - Lenght",            fieldName: "Length",             fieldType : "PropertySum"},
 	    { label : "Cantidad - Nivel",            fieldName: "Level",             fieldType : "Properties"},
 	    { label : "Cantidad - System Type",      fieldName: "System Type",       fieldType : "Properties"},
 	    { label : "Cantidad - Assembly Code",    fieldName: "Assembly Code",     fieldType : "Properties"},
@@ -10085,7 +10086,10 @@ MyAuthToken.prototype.get = function()
 	            reportData.groupQtyDataByRange(Qty, bound, initrange, wrapDataForPieChart);
 	        });
 	    }
-	    else { //property
+	    else if (reportObj.fieldType === "PropertySum") {
+				var modelTypes = reportData.groupDataByType();
+				wrapDataForPieChart(modelTypes);
+	    } else { //property
 	        reportData.groupDataByProperty(reportObj.fieldName, wrapDataForPieChart);
 	     }
 	}
@@ -10148,17 +10152,44 @@ MyAuthToken.prototype.get = function()
 
 	function wrapDataForPieChart(buckets, misCount) {
 	    var reportIdx = parseInt($("#pu_reportToRun").val());
+			console.log(buckets);
 	    var fieldName = (_reportOptions[reportIdx].fieldName === "") ? "Object Type" : _reportOptions[reportIdx].fieldName;
 	    var pieOpts = initPieOpts(fieldName, reportIdx);
+			var index = parseInt($("#pu_reportToRun option:selected").val(), 10);
+			var reportObj = _reportOptions[index];
+			var pieObject = {};
+			console.log(reportObj.fieldName);
+			if (reportObj.fieldName === "") {
+				for (var valueKey in buckets) {
+		        var pieObject = {};
+		        pieObject.label = valueKey;
+		        pieObject.value = buckets[valueKey].length;
+		        pieObject.lmvIds = buckets[valueKey];
+		        pieOpts.data.content.push(pieObject);
+		    }
+			}
+			else {
+				for (var valueKey in buckets) {
+					var pieObject = {};
+		        pieObject.label = valueKey;
+						var sumOfPropertyData = 0.0;
+						for (var objId in buckets[valueKey]) {
+							window._viewerMain.getProperties(objId, function(propObj) {
+			            for(var i = 0; i < propObj.properties.length; i++) {
+										var propValue = 0;
+			                if (propObj.properties[i].displayName === reportObj.fieldName && (!propObj.properties[i].hidden)) { //propertyName variable de nombre de propiedad definida por el option del reporte.
+													propValue = parseFloat(propObj.properties[i].displayValue);
+													break;
+			                }
+											pieObject.value = pieObject.value + propValue;
+			            }
+			        });
+						}
+		        pieObject.lmvIds = buckets[valueKey];
+		        pieOpts.data.content.push(pieObject);
+		    }
 
-	    for (var valueKey in buckets) {
-	        var pieObject = {};
-	        pieObject.label = valueKey;
-	        pieObject.value = buckets[valueKey].length;
-	        pieObject.lmvIds = buckets[valueKey];
-	        pieOpts.data.content.push(pieObject);
-	    }
-
+			}
 	    loadReportDataPieChart(pieOpts);
 	}
 
@@ -10418,7 +10449,7 @@ MyAuthToken.prototype.get = function()
 	    $.each(treeNode.children, function(i, childNode) {
 	        var leafNodes = [];
 	        getModelLeafNodes(childNode, leafNodes);
-	        subTypes[instanceTree.getNodeName(childNode)] = leafNodes;
+	        subTypes[instanceTree.getNodeName(childNode)] = leafNodes; //NAME SUB-TYPES (CATEGORIES)
 	    });
 
 	    return subTypes;
@@ -10537,45 +10568,6 @@ MyAuthToken.prototype.get = function()
 	        callback(buckets);
 	}
 
-
-
-	// first get all the quantity data and their dbIds by propertyName, and put them in an array
-	// in the meantime, find the min and max value to prepare for range grouping in next step
-function getSumOfPropertyByFamilyType(propertyName, callback) {
-	var qtyArr = [];
-	var bound = {"min":-0.1, "max":-0.1};
-	var misCount = [];
-	var sumQty = 0;
-
-	// console.time("getQtyByProperty");
-	$.each(_modelLeafNodes, function(index, dbId) {
-			window._viewerMain.getProperties(dbId, function(propObj) {
-
-					for(var i = 0; i < propObj.properties.length; i++) {
-							if (propObj.properties[i].displayName === propertyName) { //propertyName variable de nombre de propiedad definida por el option del reporte.
-									var propValue = parseFloat(propObj.properties[i].displayValue);
-									if (propValue < bound.min || bound.min < 0)
-											bound.min = propValue;
-									if (propValue > bound.max || bound.max < 0)
-											bound.max = propValue;
-									var formatVal = Autodesk.Viewing.Private.formatValueWithUnits(propObj.properties[i].displayValue, propObj.properties[i].units, propObj.properties[i].type);
-									qtyArr.push({"dbId":dbId, "val":propValue, "label":formatVal, "units":propObj.properties[i].units});
-									sumQty = sumQty + propValue;
-									break;
-							} else if (i == propObj.properties.length - 1) {
-									misCount.push(dbId);
-							}
-					}
-
-					if ( index === _modelLeafNodes.length - 1) {
-							// console.timeEnd("getQtyByProperty");
-							if (callback) {
-									callback(qtyArr, misCount, bound);
-							}
-					}
-			});
-	});
-	}
 
 	module.exports = {
 	  startReportDataLoader,
