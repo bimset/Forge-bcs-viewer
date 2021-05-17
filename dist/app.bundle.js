@@ -10730,21 +10730,11 @@ MyAuthToken.prototype.get = function()
 
 	    sel.find("option").remove().end();  // remove all existing options
 
-	            // add the 3D options
-	    $.each(_views3D, function(i, item) {
-	        sel.append($("<option>", {
-	            value: i,
-	            text : item.name
-	        }));
-	    });
-
-	    sel.append($("<option disabled>─────────────────</option>"));    // add a separator
-
-	        // add the 2D options
+	    // add the 2D options
 	    $.each(_views2D, function(i, item) {
 	        sel.append($("<option>", {
 	            value: i + 1000,    // make 2D views have a value greater than 1000 so we can tell from 3D
-	            text : item.name
+	            text : item.name()
 	        }));
 	    });
 	}
@@ -10797,7 +10787,10 @@ MyAuthToken.prototype.get = function()
 	    }
 
 	    var viewerElement = document.getElementById("viewerMain");  // placeholder in HTML to stick the viewer
-	    window._viewerMain = new Autodesk.Viewing.Private.GuiViewer3D(viewerElement, {});
+			var config3d = {
+    	loaderExtensions: { svf: "Autodesk.MemoryLimited" }
+			};
+	    window._viewerMain = new Autodesk.Viewing.GuiViewer3D(viewerElement, config3d);
 
 	    var retCode = window._viewerMain.initialize();
 	    if (retCode !== 0) {
@@ -10841,7 +10834,7 @@ MyAuthToken.prototype.get = function()
 	    }
 
 	    var viewerElement = document.getElementById("viewerSecondary");  // placeholder in HTML to stick the viewer
-	    window._viewerSecondary = new Autodesk.Viewing.Private.GuiViewer3D(viewerElement, {});
+	    window._viewerSecondary = new Autodesk.Viewing.GuiViewer3D(viewerElement, {});
 
 	    var retCode = window._viewerSecondary.initialize();
 	    if (retCode !== 0) {
@@ -10900,9 +10893,11 @@ MyAuthToken.prototype.get = function()
 	    Autodesk.Viewing.Document.load(fullUrnStr, function(document) {
 	        window._loadedDocument = document; // keep this in a global var so we can reference it in other spots
 
+					var bubbleNode = document.getRoot();
+
 	            // get all the 3D and 2D views (but keep in separate arrays so we can differentiate in the UX)
-	        _views3D = Autodesk.Viewing.Document.getSubItemsWithProperties(document.getRootItem(), {'type':'geometry', 'role':'3d'}, true);
-	        _views2D = Autodesk.Viewing.Document.getSubItemsWithProperties(document.getRootItem(), {'type':'geometry', 'role':'2d'}, true);
+	        _views3D = bubbleNode.search({'type':'geometry', 'role':'3d'});
+	        _views2D = bubbleNode.search({'type':'geometry', 'role':'2d'});
 
 	        loadViewMenuOptions();                   // populate UX with views we just retrieved
 	        initializeViewerMain();
@@ -10955,7 +10950,13 @@ MyAuthToken.prototype.get = function()
 	    var path = window._loadedDocument.getViewablePath(viewObj);
 	    console.log("Loading view URN: " + path);
 
-	    viewer.load(path, window._loadedDocument.getPropertyDbPath(), loadViewSuccessFunc, loadViewErrorFunc);
+			var sharedPropertyDbPath =  viewObj.findPropertyDbPath();
+
+			var options = {
+  		sharedPropertyDbPath
+			};
+
+	    viewer.loadModel(path, options, loadViewSuccessFunc, loadViewErrorFunc);
 	}
 
 	    // wrap this in a simple function so we can pass it into the Initializer options object
