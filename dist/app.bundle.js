@@ -10023,6 +10023,7 @@ MyAuthToken.prototype.get = function()
 
 	let _reportOptions = [
 	    { label : "Cantidad - Tipo",             fieldName: "",                  fieldType : "ModelType"},
+			{ label : "Suma por categoría - Lenght",            fieldName: "Length",             fieldType : "PropertySum"},
 	    { label : "Cantidad - Nivel",            fieldName: "Level",             fieldType : "Properties"},
 	    { label : "Cantidad - System Type",      fieldName: "System Type",       fieldType : "Properties"},
 	    { label : "Cantidad - Assembly Code",    fieldName: "Assembly Code",     fieldType : "Properties"},
@@ -10030,7 +10031,8 @@ MyAuthToken.prototype.get = function()
 	    { label : "Cantidad - Material",         fieldName: "Material",          fieldType : "Properties"},
 	    { label : "Cantidad - Type Mark",             fieldName: "Type Mark",              fieldType : "Properties"},
 	    { label : "Cantidad - Volumen",           fieldName: "Volume",            fieldType : "Quantity"},
-	    { label : "Cantidad - Area",             fieldName: "Area",              fieldType : "Quantity"}
+	    { label : "Cantidad - Area",             fieldName: "Area",              fieldType : "Quantity"},
+	    { label : "Cantidad - Length",             fieldName: "Length",              fieldType : "Quantity"}
 	];
 
 	    // populate the popup menu with the avaialable models to load (from the array above)
@@ -10084,7 +10086,10 @@ MyAuthToken.prototype.get = function()
 	            reportData.groupQtyDataByRange(Qty, bound, initrange, wrapDataForPieChart);
 	        });
 	    }
-	    else {
+	    else if (reportObj.fieldType === "PropertySum") {
+				var modelTypes = reportData.groupDataByType();
+				wrapDataForPieChart(modelTypes);
+	    } else { //property
 	        reportData.groupDataByProperty(reportObj.fieldName, wrapDataForPieChart);
 	     }
 	}
@@ -10147,17 +10152,44 @@ MyAuthToken.prototype.get = function()
 
 	function wrapDataForPieChart(buckets, misCount) {
 	    var reportIdx = parseInt($("#pu_reportToRun").val());
+			console.log(buckets);
 	    var fieldName = (_reportOptions[reportIdx].fieldName === "") ? "Object Type" : _reportOptions[reportIdx].fieldName;
 	    var pieOpts = initPieOpts(fieldName, reportIdx);
+			var index = parseInt($("#pu_reportToRun option:selected").val(), 10);
+			var reportObj = _reportOptions[index];
+			var pieObject = {};
+			console.log(reportObj.fieldName);
+			if (reportObj.fieldName === "") {
+				for (var valueKey in buckets) {
+		        var pieObject = {};
+		        pieObject.label = valueKey;
+		        pieObject.value = buckets[valueKey].length;
+		        pieObject.lmvIds = buckets[valueKey];
+		        pieOpts.data.content.push(pieObject);
+		    }
+			}
+			else {
+				for (var valueKey in buckets) {
+					var pieObject = {};
+		        pieObject.label = valueKey;
+						var sumOfPropertyData = 0.0;
+						for (var objId in buckets[valueKey]) {
+							window._viewerMain.getProperties(objId, function(propObj) {
+			            for(var i = 0; i < propObj.properties.length; i++) {
+										var propValue = 0;
+			                if (propObj.properties[i].displayName === reportObj.fieldName && (!propObj.properties[i].hidden)) { //propertyName variable de nombre de propiedad definida por el option del reporte.
+													propValue = parseFloat(propObj.properties[i].displayValue);
+													break;
+			                }
+											pieObject.value = pieObject.value + propValue;
+			            }
+			        });
+						}
+		        pieObject.lmvIds = buckets[valueKey];
+		        pieOpts.data.content.push(pieObject);
+		    }
 
-	    for (var valueKey in buckets) {
-	        var pieObject = {};
-	        pieObject.label = valueKey;
-	        pieObject.value = buckets[valueKey].length;
-	        pieObject.lmvIds = buckets[valueKey];
-	        pieOpts.data.content.push(pieObject);
-	    }
-
+			}
 	    loadReportDataPieChart(pieOpts);
 	}
 
@@ -10199,13 +10231,13 @@ MyAuthToken.prototype.get = function()
 	    $("#barChart").empty();
 
 	    if (pieOpts.data.content.length === 0) {
-	        $("#pieChart").append("<p><em>No data could be retrieved for charts.  This report is probably not applicable for the given model.  As an example, Revit models can be sorted by Type or Level, but Fusion models cannot.  Fusion models are more appropriate for reports sorted by Mass, Volume, or Material.  Try switching to a different report or a different model.</em></p>");
+	        $("#pieChart").append("<p><em>El modelo no cuenta con datos.</em></p>");
 	    }
 	    else {
 	        // if we have a lot of buckets, don't let the pie chart get out of control, condense anything with 2 or less
 	        // into an "Other" wedge.
 
-	        //pieOpts.data.sortOrder = "value-desc";
+	        //pieOpts.data.sortOrder = "value-desc"; solo hace el sort
 	        pieOpts.data.content.sort(function (a, b) {
 	            if (a.value < b.value) return 1;
 	            else if (a.value > b.value) return -1;
@@ -10317,7 +10349,7 @@ MyAuthToken.prototype.get = function()
 
 	let _selectedWedge;
 
-	function clickPieWedge(evt) {
+	function clickPieWedge(evt) { //select a una grafica pie
 
 	    if (_selectedWedge !== evt.data.label) {
 	        ids = [];
@@ -10417,7 +10449,7 @@ MyAuthToken.prototype.get = function()
 	    $.each(treeNode.children, function(i, childNode) {
 	        var leafNodes = [];
 	        getModelLeafNodes(childNode, leafNodes);
-	        subTypes[instanceTree.getNodeName(childNode)] = leafNodes;
+	        subTypes[instanceTree.getNodeName(childNode)] = leafNodes; //NAME SUB-TYPES (CATEGORIES)
 	    });
 
 	    return subTypes;
@@ -10477,7 +10509,6 @@ MyAuthToken.prototype.get = function()
 	    var qtyArr = [];
 	    var bound = {"min":-0.1, "max":-0.1};
 	    var misCount = [];
-			var sumQty = 0;
 
 	    // console.time("getQtyByProperty");
 	    $.each(_modelLeafNodes, function(index, dbId) {
@@ -10491,8 +10522,6 @@ MyAuthToken.prototype.get = function()
 	                    if (propValue > bound.max || bound.max < 0)
 	                        bound.max = propValue;
 	                    var formatVal = Autodesk.Viewing.Private.formatValueWithUnits(propObj.properties[i].displayValue, propObj.properties[i].units, propObj.properties[i].type);
-	                    qtyArr.push({"dbId":dbId, "val":propValue, "label":formatVal, "units":propObj.properties[i].units});
-											sumQty = sumQty + propValue;
 	                    break;
 	                } else if (i == propObj.properties.length - 1) {
 	                    misCount.push(dbId);
@@ -10539,6 +10568,7 @@ MyAuthToken.prototype.get = function()
 	        callback(buckets);
 	}
 
+
 	module.exports = {
 	  startReportDataLoader,
 	  groupDataByType,
@@ -10564,7 +10594,7 @@ MyAuthToken.prototype.get = function()
 	            .y(function(d) { return d.value; })
 	            .showValues(true)
 	            .showControls(false)
-	            .tooltips(false)
+	            .tooltips(true)
 	            .valueFormat(d3.format('f'))
 	            .margin({ top: 0, right: 50, bottom: 0, left: 150})
 	            .transitionDuration(400);
@@ -10700,21 +10730,11 @@ MyAuthToken.prototype.get = function()
 
 	    sel.find("option").remove().end();  // remove all existing options
 
-	            // add the 3D options
-	    $.each(_views3D, function(i, item) {
-	        sel.append($("<option>", {
-	            value: i,
-	            text : item.name
-	        }));
-	    });
-
-	    sel.append($("<option disabled>─────────────────</option>"));    // add a separator
-
-	        // add the 2D options
+	    // add the 2D options
 	    $.each(_views2D, function(i, item) {
 	        sel.append($("<option>", {
 	            value: i + 1000,    // make 2D views have a value greater than 1000 so we can tell from 3D
-	            text : item.name
+	            text : item.name()
 	        }));
 	    });
 	}
@@ -10767,7 +10787,10 @@ MyAuthToken.prototype.get = function()
 	    }
 
 	    var viewerElement = document.getElementById("viewerMain");  // placeholder in HTML to stick the viewer
-	    window._viewerMain = new Autodesk.Viewing.Private.GuiViewer3D(viewerElement, {});
+			var config3d = {
+    	loaderExtensions: { svf: "Autodesk.MemoryLimited" }
+			};
+	    window._viewerMain = new Autodesk.Viewing.GuiViewer3D(viewerElement, config3d);
 
 	    var retCode = window._viewerMain.initialize();
 	    if (retCode !== 0) {
@@ -10811,7 +10834,7 @@ MyAuthToken.prototype.get = function()
 	    }
 
 	    var viewerElement = document.getElementById("viewerSecondary");  // placeholder in HTML to stick the viewer
-	    window._viewerSecondary = new Autodesk.Viewing.Private.GuiViewer3D(viewerElement, {});
+	    window._viewerSecondary = new Autodesk.Viewing.GuiViewer3D(viewerElement, {});
 
 	    var retCode = window._viewerSecondary.initialize();
 	    if (retCode !== 0) {
@@ -10870,9 +10893,11 @@ MyAuthToken.prototype.get = function()
 	    Autodesk.Viewing.Document.load(fullUrnStr, function(document) {
 	        window._loadedDocument = document; // keep this in a global var so we can reference it in other spots
 
+					var bubbleNode = document.getRoot();
+
 	            // get all the 3D and 2D views (but keep in separate arrays so we can differentiate in the UX)
-	        _views3D = Autodesk.Viewing.Document.getSubItemsWithProperties(document.getRootItem(), {'type':'geometry', 'role':'3d'}, true);
-	        _views2D = Autodesk.Viewing.Document.getSubItemsWithProperties(document.getRootItem(), {'type':'geometry', 'role':'2d'}, true);
+	        _views3D = bubbleNode.search({'type':'geometry', 'role':'3d'});
+	        _views2D = bubbleNode.search({'type':'geometry', 'role':'2d'});
 
 	        loadViewMenuOptions();                   // populate UX with views we just retrieved
 	        initializeViewerMain();
@@ -10925,7 +10950,13 @@ MyAuthToken.prototype.get = function()
 	    var path = window._loadedDocument.getViewablePath(viewObj);
 	    console.log("Loading view URN: " + path);
 
-	    viewer.load(path, window._loadedDocument.getPropertyDbPath(), loadViewSuccessFunc, loadViewErrorFunc);
+			var sharedPropertyDbPath =  viewObj.findPropertyDbPath();
+
+			var options = {
+  		sharedPropertyDbPath
+			};
+
+	    viewer.loadModel(path, options, loadViewSuccessFunc, loadViewErrorFunc);
 	}
 
 	    // wrap this in a simple function so we can pass it into the Initializer options object
